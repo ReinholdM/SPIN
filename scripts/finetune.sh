@@ -1,5 +1,5 @@
 # Set which GPU devices to be visible to the process, --num_processes should be adjusted accordingly
-export CUDA_VISIBLE_DEVICES="0,1,2,3,4,5,6,7"
+export CUDA_VISIBLE_DEVICES="1,2,3"
 
 # Set the home directory for Hugging Face transformers library cache.
 #export HF_HOME="${your_hf_home}"
@@ -18,4 +18,5 @@ ACCELERATE_LOG_LEVEL=info
 # --output_dir="${path_to_save_checkpoint}": Directory where training checkpoints will be saved.
 # Execution command: Runs 'spin/run_spin.py' with 'configs/config.yaml' as its configuration.
 
-accelerate launch --config_file configs/deepspeed_zero3.yaml --num_processes=8 --main_process_port 2950 spin/run_spin.py configs/config.yaml --num_train_epochs=6 --output_dir="outputs/iter0-ckpt"
+# accelerate launch --config_file configs/deepspeed_zero3.yaml --num_processes=4 --main_process_port 2950 
+python spin/run_spin.py configs/config.yaml --num_train_epochs=30 --output_dir="outputs/iter0-ckpt"

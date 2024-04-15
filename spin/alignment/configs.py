@@ -149,7 +149,7 @@ class ModelArguments:
         },
     )
     use_peft: bool = field(
-        default=False,
+        default=True,
         metadata={"help": ("Whether to use PEFT or not for training.")},
     )
     lora_r: Optional[int] = field(

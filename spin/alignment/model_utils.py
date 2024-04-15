@@ -30,17 +30,17 @@ from .configs import DataArguments, ModelArguments
 from .data import DEFAULT_CHAT_TEMPLATE
 
 
-def get_current_device() -> int:
+def get_current_device():
     """Get the current device. For GPU we return the local process index to enable multiple GPU training."""
     return Accelerator().local_process_index if torch.cuda.is_available() else "cpu"
 
 
-def get_kbit_device_map() -> Dict[str, int] | None:
+def get_kbit_device_map():
     """Useful for running inference with quantized models by setting `device_map=get_peft_device_map()`"""
     return {"": get_current_device()} if torch.cuda.is_available() else None
 
 
-def get_quantization_config(model_args) -> BitsAndBytesConfig | None:
+def get_quantization_config(model_args):
     if model_args.load_in_4bit:
         quantization_config = BitsAndBytesConfig(
             load_in_4bit=True,
@@ -58,17 +58,17 @@ def get_quantization_config(model_args) -> BitsAndBytesConfig | None:
     return quantization_config
 
 
-def get_tokenizer(model_args: ModelArguments, data_args: DataArguments) -> PreTrainedTokenizer:
+def get_tokenizer(model_args: ModelArguments, data_args: DataArguments):
     """Get the tokenizer for the model."""
     tokenizer = AutoTokenizer.from_pretrained(
         model_args.model_name_or_path,
         revision=model_args.model_revision,
     )
     if tokenizer.pad_token_id is None:
-        tokenizer.pad_token_id = tokenizer.eos_token_id
+        tokenizer.pad_token_id = 0
 
     if data_args.truncation_side is not None:
-        tokenizer.truncation_side = data_args.truncation_side
+        tokenizer.padding_side = data_args.truncation_side
 
     # Set reasonable default for models without max length
     # if tokenizer.model_max_length > 100_000:
@@ -82,7 +82,7 @@ def get_tokenizer(model_args: ModelArguments, data_args: DataArguments) -> PreTr
     return tokenizer
 
 
-def get_peft_config(model_args: ModelArguments) -> PeftConfig | None:
+def get_peft_config(model_args: ModelArguments):
     if model_args.use_peft is False:
         return None
 
@@ -99,7 +99,7 @@ def get_peft_config(model_args: ModelArguments) -> PeftConfig | None:
     return peft_config
 
 
-def is_adapter_model(model_name_or_path: str, revision: str = "main") -> bool:
+def is_adapter_model(model_name_or_path: str, revision: str = "main"):
     try:
         # Try first if model on a Hub repo
         repo_files = list_repo_files(model_name_or_path, revision=revision)

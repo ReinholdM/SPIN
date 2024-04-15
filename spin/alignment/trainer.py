@@ -13,6 +13,7 @@ from accelerate import init_empty_weights, load_checkpoint_and_dispatch
 from accelerate.utils import is_deepspeed_available
 from datasets import Dataset
 from torch.utils.data import DataLoader
+import transformers
 from transformers import (
     AutoConfig, 
     AutoModelForCausalLM,
@@ -33,7 +34,14 @@ from .utils import DataCollatorWithPadding
 
 
 if is_peft_available():
-    from peft import PeftModel, get_peft_model, prepare_model_for_kbit_training
+    from peft import PeftModel, prepare_model_for_kbit_training
+    from peft import (
+    prepare_model_for_int8_training,
+    LoraConfig,
+    get_peft_model,
+    get_peft_model_state_dict,
+    )
+
 
 
 if is_wandb_available():
@@ -157,42 +165,58 @@ class SPINTrainer(Trainer):
             )
             # with deepspeed.zero.Init():
             model = AutoModelForCausalLM.from_pretrained(model, **model_init_kwargs)
-
-        if not is_peft_available() and peft_config is not None:
-            raise ValueError(
-                "PEFT is not installed and you passed a `peft_config` in the trainer's kwargs, please install it to use the PEFT models"
+            lora_r = 8
+            lora_alpha = 16
+            lora_dropout = 0.05
+            lora_target_modules = [
+                            "q_proj",
+                            "v_proj",
+                                ]
+            config = LoraConfig(
+                r=lora_r,
+                lora_alpha=lora_alpha,
+                target_modules=lora_target_modules,
+                lora_dropout=lora_dropout,
+                bias="none",
+                task_type="CAUSAL_LM",
             )
-        elif is_peft_available() and peft_config is not None:
-            # if model is a peft model and we have a peft_config, we merge and unload it first
-            if isinstance(model, PeftModel):
-                model = model.merge_and_unload()
+        #     model = get_peft_model(model, config)
 
-            if getattr(model, "is_loaded_in_8bit", False) or getattr(model, "is_loaded_in_4bit", False):
-                _support_gc_kwargs = hasattr(
-                    args, "gradient_checkpointing_kwargs"
-                ) and "gradient_checkpointing_kwargs" in list(
-                    inspect.signature(prepare_model_for_kbit_training).parameters
-                )
+        # if not is_peft_available() and peft_config is not None:
+        #     raise ValueError(
+        #         "PEFT is not installed and you passed a `peft_config` in the trainer's kwargs, please install it to use the PEFT models"
+        #     )
+        # elif is_peft_available() and peft_config is not None:
+        #     # if model is a peft model and we have a peft_config, we merge and unload it first
+        #     if isinstance(model, PeftModel):
+        #         model = model.merge_and_unload()
 
-                preprare_model_kwargs = {"use_gradient_checkpointing": args.gradient_checkpointing}
+        #     if getattr(model, "is_loaded_in_8bit", False) or getattr(model, "is_loaded_in_4bit", False):
+        #         _support_gc_kwargs = hasattr(
+        #             args, "gradient_checkpointing_kwargs"
+        #         ) and "gradient_checkpointing_kwargs" in list(
+        #             inspect.signature(prepare_model_for_kbit_training).parameters
+        #         )
 
-                if _support_gc_kwargs:
-                    preprare_model_kwargs["gradient_checkpointing_kwargs"] = args.gradient_checkpointing_kwargs
+        #         preprare_model_kwargs = {"use_gradient_checkpointing": args.gradient_checkpointing}
 
-                model = prepare_model_for_kbit_training(model, **preprare_model_kwargs)
-            elif getattr(args, "gradient_checkpointing", False):
-                # For backward compatibility with older versions of transformers
-                if hasattr(model, "enable_input_require_grads"):
-                    model.enable_input_require_grads()
-                else:
+        #         if _support_gc_kwargs:
+        #             preprare_model_kwargs["gradient_checkpointing_kwargs"] = args.gradient_checkpointing_kwargs
 
-                    def make_inputs_require_grad(module, input, output):
-                        output.requires_grad_(True)
+        #         model = prepare_model_for_kbit_training(model, **preprare_model_kwargs)
+        #     elif getattr(args, "gradient_checkpointing", False):
+        #         # For backward compatibility with older versions of transformers
+        #         if hasattr(model, "enable_input_require_grads"):
+        #             model.enable_input_require_grads()
+        #         else:
 
-                    model.get_input_embeddings().register_forward_hook(make_inputs_require_grad)
+        #             def make_inputs_require_grad(module, input, output):
+        #                 output.requires_grad_(True)
+
+        #             model.get_input_embeddings().register_forward_hook(make_inputs_require_grad)
 
             # get peft model with the given config
-            model = get_peft_model(model, peft_config)
+            model = get_peft_model(model, config)
 
         # For models that use gradient_checkpointing, we need to attach a hook that enables input
         # to explicitly have `requires_grad=True`, otherwise training will either silently
@@ -225,52 +249,53 @@ class SPINTrainer(Trainer):
 
 
         if data_collator is None:
-            if tokenizer is None:
-                raise ValueError(
-                    "max_length or a tokenizer must be specified when using the default SPINDataCollatorWithPadding"
-                )
-            if max_length is None:
-                warnings.warn(
-                    "When using SPINDataCollatorWithPadding, you should set `max_length` in the SPINTrainer's init"
-                    " it will be set to `512` by default, but you should do it yourself in the future.",
-                    UserWarning,
-                )
-                max_length = 512
-            if max_prompt_length is None:
-                warnings.warn(
-                    "When using SPINDataCollatorWithPadding, you should set `max_prompt_length` in the SPINTrainer's init"
-                    " it will be set to `128` by default, but you should do it yourself in the future.",
-                    UserWarning,
-                )
-                max_prompt_length = 128
+            # if tokenizer is None:
+            #     raise ValueError(
+            #         "max_length or a tokenizer must be specified when using the default SPINDataCollatorWithPadding"
+            #     )
+            # if max_length is None:
+            #     warnings.warn(
+            #         "When using SPINDataCollatorWithPadding, you should set `max_length` in the SPINTrainer's init"
+            #         " it will be set to `512` by default, but you should do it yourself in the future.",
+            #         UserWarning,
+            #     )
+            #     max_length = 512
+            # if max_prompt_length is None:
+            #     warnings.warn(
+            #         "When using SPINDataCollatorWithPadding, you should set `max_prompt_length` in the SPINTrainer's init"
+            #         " it will be set to `128` by default, but you should do it yourself in the future.",
+            #         UserWarning,
+            #     )
+            #     max_prompt_length = 128
 
-            if max_target_length is None and self.is_encoder_decoder:
-                warnings.warn(
-                    "When using SPINDataCollatorWithPadding with an encoder decoder architecture, you should set `max_target_length` in the SPINTrainer's init"
-                    " it will be set to `128` by default, but you should do it yourself in the future.",
-                    UserWarning,
-                )
-                max_target_length = 128
+            # if max_target_length is None and self.is_encoder_decoder:
+            #     warnings.warn(
+            #         "When using SPINDataCollatorWithPadding with an encoder decoder architecture, you should set `max_target_length` in the SPINTrainer's init"
+            #         " it will be set to `128` by default, but you should do it yourself in the future.",
+            #         UserWarning,
+            #     )
+            #     max_target_length = 128
 
-            data_collator = DataCollatorWithPadding(
-                tokenizer,
-                max_length=max_length,
-                max_prompt_length=max_prompt_length,
-                label_pad_token_id=label_pad_token_id,
-                padding_value=padding_value,
-                truncation_mode=truncation_mode,
-                is_encoder_decoder=self.is_encoder_decoder,
-                max_target_length=max_target_length,
-            )
+            # data_collator = DataCollatorWithPadding(
+            #     tokenizer,
+            #     max_length=max_length,
+            #     max_prompt_length=max_prompt_length,
+            #     label_pad_token_id=label_pad_token_id,
+            #     padding_value=padding_value,
+            #     truncation_mode=truncation_mode,
+            #     is_encoder_decoder=self.is_encoder_decoder,
+            #     max_target_length=max_target_length,
+            # )
 
-            if args.remove_unused_columns:
-                args.remove_unused_columns = False
-                # warn users
-                warnings.warn(
-                    "When using SPINDataCollatorWithPadding, you should set `remove_unused_columns=False` in your TrainingArguments"
-                    " we have set it for you, but you should do it yourself in the future.",
-                    UserWarning,
-                )
+            # if args.remove_unused_columns:
+            #     args.remove_unused_columns = False
+            #     # warn users
+            #     warnings.warn(
+            #         "When using SPINDataCollatorWithPadding, you should set `remove_unused_columns=False` in your TrainingArguments"
+            #         " we have set it for you, but you should do it yourself in the future.",
+            #         UserWarning,
+            #     )
+            data_collator=transformers.DataCollatorForSeq2Seq(tokenizer, pad_to_multiple_of=8, return_tensors="pt", padding=True)
 
             self.use_data_collator = True
         else:
@@ -575,26 +600,47 @@ class SPINTrainer(Trainer):
 
         return losses.mean(), metrics
 
-    def compute_loss(
-        self,
-        model: Union[PreTrainedModel, nn.Module],
-        inputs: Dict[str, Union[torch.Tensor, Any]],
-        return_outputs=False,
-    ) -> Union[torch.Tensor, Tuple[torch.Tensor, Dict[str, torch.Tensor]]]:
-        if not self.use_data_collator:
-            warnings.warn(
-                "compute_loss is only implemented for SPINDataCollatorWithPadding, and you passed a datacollator that is different than "
-                "SPINDataCollatorWithPadding - you might see unexpected behavior. Alternatively, you can implement your own prediction_step method if you are using a custom data collator"
-            )
-        loss, metrics = self.get_batch_metrics(model, inputs, train_eval="train")
+    # def compute_loss(
+    #     self,
+    #     model: Union[PreTrainedModel, nn.Module],
+    #     inputs: Dict[str, Union[torch.Tensor, Any]],
+    #     return_outputs=False,
+    # ) -> Union[torch.Tensor, Tuple[torch.Tensor, Dict[str, torch.Tensor]]]:
+    #     if not self.use_data_collator:
+    #         warnings.warn(
+    #             "compute_loss is only implemented for SPINDataCollatorWithPadding, and you passed a datacollator that is different than "
+    #             "SPINDataCollatorWithPadding - you might see unexpected behavior. Alternatively, you can implement your own prediction_step method if you are using a custom data collator"
+    #         )
+    #     if self.label_smoother is not None and "labels" in inputs:
+    #         labels = inputs.pop("labels")
+    #     else:
+    #         labels = None
+    #     outputs = model(**inputs)
+    #     # Save past state if it exists
+    #     # TODO: this needs to be fixed and made cleaner later.
+    #     if self.args.past_index >= 0:
+    #         self._past = outputs[self.args.past_index]
 
-        # force log the metrics
-        if self.accelerator.is_main_process:
-            self.store_metrics(metrics, train_eval="train")
+    #     if labels is not None:
+    #         unwrapped_model = unwrap_model(model)
+    #         if _is_peft_model(unwrapped_model):
+    #             model_name = unwrapped_model.base_model.model._get_name()
+    #         else:
+    #             model_name = unwrapped_model._get_name()
+    #         if model_name in MODEL_FOR_CAUSAL_LM_MAPPING_NAMES.values():
+    #             loss = self.label_smoother(outputs, labels, shift_labels=True)
+    #         else:
+    #             loss = self.label_smoother(outputs, labels)
+    #     return (loss, outputs) if return_outputs else loss
+        # loss, metrics = self.get_batch_metrics(model, inputs, train_eval="train")
 
-        if return_outputs:
-            return (loss, metrics)
-        return loss
+        # # force log the metrics
+        # if self.accelerator.is_main_process:
+        #     self.store_metrics(metrics, train_eval="train")
+
+        # if return_outputs:
+        #     return (loss, metrics)
+        # return loss
 
     def get_batch_samples(self, model, batch: Dict[str, torch.LongTensor]) -> Tuple[str, str]:
         """Generate samples from the model and reference model for the given batch of inputs."""
@@ -633,98 +679,98 @@ class SPINTrainer(Trainer):
 
         return policy_output_decoded, reference_output_decoded
 
-    def prediction_step(
-        self,
-        model: Union[PreTrainedModel, nn.Module],
-        inputs: Dict[str, Union[torch.Tensor, Any]],
-        prediction_loss_only: bool,
-        ignore_keys: Optional[List[str]] = None,
-    ):
-        if not self.use_data_collator:
-            warnings.warn(
-                "prediction_step is only implemented for SPINDataCollatorWithPadding, and you passed a datacollator that is different than "
-                "SPINDataCollatorWithPadding - you might see unexpected behavior. Alternatively, you can implement your own prediction_step method if you are using a custom data collator"
-            )
-        if ignore_keys is None:
-            if hasattr(model, "config"):
-                ignore_keys = getattr(model.config, "keys_to_ignore_at_inference", [])
-            else:
-                ignore_keys = []
+    # def prediction_step(
+    #     self,
+    #     model: Union[PreTrainedModel, nn.Module],
+    #     inputs: Dict[str, Union[torch.Tensor, Any]],
+    #     prediction_loss_only: bool,
+    #     ignore_keys: Optional[List[str]] = None,
+    # ):
+    #     if not self.use_data_collator:
+    #         warnings.warn(
+    #             "prediction_step is only implemented for SPINDataCollatorWithPadding, and you passed a datacollator that is different than "
+    #             "SPINDataCollatorWithPadding - you might see unexpected behavior. Alternatively, you can implement your own prediction_step method if you are using a custom data collator"
+    #         )
+    #     if ignore_keys is None:
+    #         if hasattr(model, "config"):
+    #             ignore_keys = getattr(model.config, "keys_to_ignore_at_inference", [])
+    #         else:
+    #             ignore_keys = []
 
-        with torch.no_grad():
-            loss, metrics = self.get_batch_metrics(model, inputs, train_eval="eval")
+    #     with torch.no_grad():
+    #         loss, metrics = self.get_batch_metrics(model, inputs, train_eval="eval")
 
-        # force log the metrics
-        if self.accelerator.is_main_process:
-            self.store_metrics(metrics, train_eval="eval")
+    #     # force log the metrics
+    #     if self.accelerator.is_main_process:
+    #         self.store_metrics(metrics, train_eval="eval")
 
-        if prediction_loss_only:
-            return (loss.detach(), None, None)
+    #     if prediction_loss_only:
+    #         return (loss.detach(), None, None)
 
-        # logits for the real and generated samples from model
-        logits_dict = {
-            "eval_logits/real": metrics["eval_logits/real"],
-            "eval_logits/generated": metrics["eval_logits/generated"],
-        }
-        logits = tuple(v.unsqueeze(dim=0) for k, v in logits_dict.items() if k not in ignore_keys)
-        logits = torch.stack(logits).mean(axis=1).to(self.accelerator.device)
-        labels = torch.zeros(logits.shape[0], device=self.accelerator.device)
+    #     # logits for the real and generated samples from model
+    #     logits_dict = {
+    #         "eval_logits/real": metrics["eval_logits/real"],
+    #         "eval_logits/generated": metrics["eval_logits/generated"],
+    #     }
+    #     logits = tuple(v.unsqueeze(dim=0) for k, v in logits_dict.items() if k not in ignore_keys)
+    #     logits = torch.stack(logits).mean(axis=1).to(self.accelerator.device)
+    #     labels = torch.zeros(logits.shape[0], device=self.accelerator.device)
 
-        return (loss.detach(), logits, labels)
+    #     return (loss.detach(), logits, labels)
 
     def store_metrics(self, metrics: Dict[str, float], train_eval: Literal["train", "eval"] = "train") -> None:
         for key, value in metrics.items():
             self._stored_metrics[train_eval][key].append(value)
 
-    def evaluation_loop(
-        self,
-        dataloader: DataLoader,
-        description: str,
-        prediction_loss_only: Optional[bool] = None,
-        ignore_keys: Optional[List[str]] = None,
-        metric_key_prefix: str = "eval",
-    ) -> EvalLoopOutput:
-        """
-        Overriding built-in evaluation loop to store metrics for each batch.
-        Prediction/evaluation loop, shared by `Trainer.evaluate()` and `Trainer.predict()`.
+    # def evaluation_loop(
+    #     self,
+    #     dataloader: DataLoader,
+    #     description: str,
+    #     prediction_loss_only: Optional[bool] = None,
+    #     ignore_keys: Optional[List[str]] = None,
+    #     metric_key_prefix: str = "eval",
+    # ) -> EvalLoopOutput:
+    #     """
+    #     Overriding built-in evaluation loop to store metrics for each batch.
+    #     Prediction/evaluation loop, shared by `Trainer.evaluate()` and `Trainer.predict()`.
 
-        Works both with or without labels.
-        """
+    #     Works both with or without labels.
+    #     """
 
-        # Sample and save to game log if requested (for one batch to save time)
-        if self.generate_during_eval:
-            # Generate random indices within the range of the total number of samples
-            num_samples = len(dataloader.dataset)
-            random_indices = random.sample(range(num_samples), k=self.args.eval_batch_size)
+    #     # Sample and save to game log if requested (for one batch to save time)
+    #     if self.generate_during_eval:
+    #         # Generate random indices within the range of the total number of samples
+    #         num_samples = len(dataloader.dataset)
+    #         random_indices = random.sample(range(num_samples), k=self.args.eval_batch_size)
 
-            # Use dataloader.dataset.select to get the random batch without iterating over the DataLoader
-            random_batch_dataset = dataloader.dataset.select(random_indices)
-            random_batch = self.data_collator(random_batch_dataset)
-            random_batch = self._prepare_inputs(random_batch)
+    #         # Use dataloader.dataset.select to get the random batch without iterating over the DataLoader
+    #         random_batch_dataset = dataloader.dataset.select(random_indices)
+    #         random_batch = self.data_collator(random_batch_dataset)
+    #         random_batch = self._prepare_inputs(random_batch)
 
-            policy_output_decoded, ref_output_decoded = self.get_batch_samples(self.model, random_batch)
+    #         policy_output_decoded, ref_output_decoded = self.get_batch_samples(self.model, random_batch)
 
-            self.log(
-                {
-                    "game_log": wandb.Table(
-                        columns=["Prompt", "Policy", "Ref Model"],
-                        rows=[
-                            [prompt, pol[len(prompt) :], ref[len(prompt) :]]
-                            for prompt, pol, ref in zip(
-                                random_batch["prompt"], policy_output_decoded, ref_output_decoded
-                            )
-                        ],
-                    )
-                }
-            )
-            self.state.log_history.pop()
+    #         self.log(
+    #             {
+    #                 "game_log": wandb.Table(
+    #                     columns=["Prompt", "Policy", "Ref Model"],
+    #                     rows=[
+    #                         [prompt, pol[len(prompt) :], ref[len(prompt) :]]
+    #                         for prompt, pol, ref in zip(
+    #                             random_batch["prompt"], policy_output_decoded, ref_output_decoded
+    #                         )
+    #                     ],
+    #                 )
+    #             }
+    #         )
+    #         self.state.log_history.pop()
 
-        # Base evaluation
-        initial_output = super().evaluation_loop(
-            dataloader, description, prediction_loss_only, ignore_keys, metric_key_prefix
-        )
+    #     # Base evaluation
+    #     initial_output = super().evaluation_loop(
+    #         dataloader, description, prediction_loss_only, ignore_keys, metric_key_prefix
+    #     )
 
-        return initial_output
+    #     return initial_output
 
     def log(self, logs: Dict[str, float]) -> None:
         """

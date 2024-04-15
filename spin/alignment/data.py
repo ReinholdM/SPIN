@@ -46,10 +46,10 @@ def apply_chat_template(
 
 
 def get_datasets(
-    data_config: DataArguments | dict,
-    splits: List[str] = ["train", "test"],
-    shuffle: bool = True,
-) -> DatasetDict:
+    data_config,
+    splits,
+    shuffle,
+):
     """
     Loads one or more datasets with varying training set proportions.
 
