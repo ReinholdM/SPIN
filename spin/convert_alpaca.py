@@ -34,7 +34,7 @@ def convert(input_dir, output_dir):
         
 if __name__ == '__main__':
     data_path = 'trajs/'
-    original_file = data_path + 'hotpotqa_dev_0_5_llama_._models_lora_fireact-llama-2-13b__0.7_2024-04-14-20-44-05.json'
+    original_file = data_path + 'hotpotqa_dev_0_5_llama__home_lhmeng_rlproj_llm_rl_agent_model_SPIN_outputs_iter0-ckpt_0.7_2024-04-17-14-43-24.json'
     output_file_path = data_path + 'alpaca_format.json'
     convert(original_file, output_file_path)
     print(f"Data converted to Alpaca format and saved to {output_file_path}")
