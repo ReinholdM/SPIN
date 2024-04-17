@@ -58,6 +58,11 @@ _deps = [
     "trl==0.7.4",
     "jinja2>=3.0.0",
     "tqdm>=4.64.1",
+    "aiohttp==3.8.3",
+    "aiolimiter==1.1.0",
+    "google_search_results==2.4.2",
+    "ipython==8.5.0",
+    "openai",
 ]
 
 # this is a lookup table with items like:
