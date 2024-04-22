@@ -19,4 +19,5 @@ ACCELERATE_LOG_LEVEL=info
 # Execution command: Runs 'spin/run_spin.py' with 'configs/config.yaml' as its configuration.
 
 # accelerate launch --config_file configs/deepspeed_zero3.yaml --num_processes=4 --main_process_port 2950 
-python spin/run_spin.py configs/config.yaml --num_train_epochs=30 --output_dir="outputs/iter0-ckpt"
+# python spin/run_spin.py configs/config.yaml --num_train_epochs=30 --output_dir="outputs/iter0-ckpt"
+python spin/run_dpo.py configs/config.yaml --num_train_epochs=30 --output_dir="outputs/iter0-dpo-ckpt"
