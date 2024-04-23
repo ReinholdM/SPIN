@@ -1,5 +1,5 @@
 # Model arguments
-model_name_or_path: /home/lhmeng/rlproj/llm_rl/agent_model/FireAct/finetune/llama_lora/Llama-2-13b-chat-hf
+model_name_or_path: /home/lhmeng/rlproj/llm_rl/agent_model/FireAct/finetune/llama_lora/Llama-2-7b-chat-hf
 model_revision: ""
 
 # Data training arguments

@@ -246,9 +246,7 @@ def main():
     # data_path = "data/finetune/alpaca_format/hotpotqa.json"
     data = load_dataset(data_path)
     # data = load_dataset("json", data_files=data_path)
-    
-    print(data)
-    
+        
     train_val = data["train"].train_test_split(
         test_size=0.01, shuffle=True, seed=42
     )
@@ -260,6 +258,26 @@ def main():
     #     f"Training on the following splits: {[split + ' : ' + str(dset.num_rows) for split, dset in raw_datasets.items()]}"
     # )
     # column_names = list(raw_datasets["train"].features)
+    
+    #########################
+    # Transfer Data Format to Chat-Assistant
+    #########################
+    def modify_data(example):
+        # 修改 prompt
+        example["prompt"] = example["instruction"]
+        
+        # 修改 chosen
+        temp_dict = example["chosen"]
+        example["chosen"] = [{"content": example["prompt"], "role": "user"}, {"content": temp_dict, "role": "assistant"}]
+        example["chosen"] = tokenizer.apply_chat_template(example["chosen"], tokenize=False)
+        # 修改 rejected
+        temp_dict = example['rejected']
+        example["rejected"] = [{"content": example["prompt"], "role": "user"}, {"content": temp_dict, "role": "assistant"}]
+        example["rejected"] = tokenizer.apply_chat_template(example["rejected"], tokenize=False)
+        
+        return example
+    train_data = train_data.map(modify_data)
+    val_data = val_data.map(modify_data)
     
     #########################
     # Instantiate DPO trainer
@@ -296,7 +314,6 @@ def main():
     #     peft_config=get_peft_config(model_args),
     # )
     dpo_trainer = DPOTrainer(model=model,
-                             tokenizer=tokenizer,
                              train_dataset=train_data,
                              eval_dataset=val_data,
                              args=transformers.TrainingArguments(
@@ -315,7 +332,12 @@ def main():
                             save_total_limit=3,
                             load_best_model_at_end=True,
                             ddp_find_unused_parameters=None,
-                            group_by_length=True,),)
+                            group_by_length=True,),
+                            tokenizer=tokenizer,
+                            max_length=training_args.max_length,
+                            max_prompt_length=training_args.max_prompt_length,
+                            peft_config=get_peft_config(model_args),
+                            )
     ###############
     # Training loop
     ###############
